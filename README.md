@@ -1,36 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 내몫
 
-## Getting Started
+> 내 조건에 맞는 정부 지원금을 검색 없이 한눈에
 
-First, run the development server:
+자영업자·소상공인을 위한 정부 지원사업 공고 큐레이션 서비스.
+흩어진 공고를 자동으로 수집하고, 내 업종·지역·사업단계에 맞게 필터링해서 보여준다.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## 문제 정의
+
+정부 지원사업은 많지만 어디서 뭘 신청해야 하는지 모른다.
+기업마당 같은 공식 사이트는 검색 조건이 복잡하고, 내 상황에 맞는 공고를 찾으려면 직접 하나씩 눌러봐야 한다.
+
+**내몫**은 이 과정을 자동화한다.
+
+---
+
+## 구현된 기능
+
+### 공고 자동 수집
+
+기업마당 공식 API에서 하루 3회(오전 8시·낮 12시·오후 6시) 공고를 자동 수집한다.
+수집 시 업종·지역·사업단계 태그를 자동으로 분류하고, 마감된 공고는 자동으로 닫힘 처리한다.
+
+### 조건 검색
+
+업종(11종)·지역(18개 시도)·사업단계(예비창업~재도전) 세 가지 조건으로 검색한다.
+입력한 조건을 모두 충족하는 공고를 **추천**으로, 부분 매칭 공고를 **전체**로 구분해서 보여준다.
+마감 임박순·최신순·지원금액순 정렬과 마감 기한 필터도 지원한다.
+
+### AI 검색
+
+자유 텍스트로 검색할 수 있다.
+"서울에서 카페 운영 2년 됐어요" 같은 문장을 입력하면 Google Gemini가 조건을 분류해서 결과를 보여준다.
+
+### 이달의 TOP 10
+
+마감 임박도·지원금액·범용성을 기준으로 점수를 매겨 상위 10개 공고를 랜딩 페이지에 자동으로 표시한다.
+공고 수집 후 자동으로 갱신된다.
+
+### 공고 상세
+
+공고명·지원기관·지원금액·신청기간·자격조건 요약을 한 페이지에서 확인한다.
+D-day 배지와 함께 원문 링크(기업마당)로 바로 이동할 수 있다.
+
+### 카카오톡 공유
+
+공고 상세 페이지에서 카카오톡으로 공고를 공유할 수 있다.
+공고명·지원금액·마감일이 포함된 형태로 전송된다.
+
+### 알림 사전등록
+
+이메일 또는 전화번호와 관심 조건을 등록하면, 이후 출시하는 맞춤 알림 서비스 대상자로 등록된다.
+
+---
+
+## 2주차 계획 (미구현)
+
+| 기능 | 내용 |
+|------|------|
+| 회원가입 | 전화번호 기반 간편 가입 (유료 기능 진입 시만) |
+| 맞춤 알림 | 새 공고 알림톡, 마감 리마인더, 주간 리포트 (월 2,900원) |
+| 구독 결제 | 월 정기 결제 자동화 |
+
+---
+
+## 기술 스택
+
+| 구분 | 사용 기술 |
+|------|-----------|
+| 프레임워크 | Next.js 16 (App Router), React 19, TypeScript |
+| 스타일링 | Tailwind CSS, shadcn/ui |
+| 데이터베이스 | Supabase (PostgreSQL) |
+| AI | Google Gemini 2.5 Flash |
+| 외부 API | 기업마당 공식 API, 카카오톡 SDK |
+| 배포 | Vercel (Cron 포함) |
+
+---
+
+## 디렉토리 구조
+
+```
+내몫/
+├── plan/         # 기획 문서
+└── naemok/       # Next.js 프로젝트
+    └── src/
+        ├── app/              # 페이지 및 API 라우트
+        ├── components/       # UI 컴포넌트
+        ├── lib/
+        │   ├── bizinfo/      # 기업마당 수집·분류 파이프라인
+        │   └── supabase/     # DB 클라이언트
+        ├── types/            # 타입 정의
+        └── constants/        # 필터 옵션 및 키워드 매핑
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 환경변수
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
+GOOGLE_GENERATIVE_AI_API_KEY=
+BIZINFO_API_KEY=
+CRON_SECRET=
+NEXT_PUBLIC_KAKAO_JS_KEY=
+```

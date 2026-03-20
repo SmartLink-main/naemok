@@ -8,8 +8,8 @@ import { SortFilterBar } from '@/components/search/SortFilterBar'
 import { AnnouncementCard } from '@/components/announcement/AnnouncementCard'
 import { PreRegisterForm } from '@/components/pre-register/PreRegisterForm'
 import { PaginationNav } from '@/components/ui/PaginationNav'
+import { RelatedSection } from '@/components/search/RelatedSection'
 import { Announcement } from '@/types/announcement'
-import { Separator } from '@/components/ui/separator'
 
 const PAGE_SIZE = 10
 
@@ -27,91 +27,125 @@ interface SearchPageProps {
   }>
 }
 
-function applySort(data: Announcement[], sort: SortType): Announcement[] {
-  const arr = [...data]
-  if (sort === 'latest') {
-    return arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }
-  if (sort === 'amount') {
-    return arr.sort((a, b) => (b.amount_max ?? b.amount_min ?? 0) - (a.amount_max ?? a.amount_min ?? 0))
-  }
-  // deadline: end_date 오름차순 (null 뒤로)
-  return arr.sort((a, b) => {
-    if (!a.end_date) return 1
-    if (!b.end_date) return -1
-    return new Date(a.end_date).getTime() - new Date(b.end_date).getTime()
-  })
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyQuery = any
+
+// DB 정렬 적용
+function applyDbSort(q: AnyQuery, sort: SortType): AnyQuery {
+  if (sort === 'latest') return q.order('created_at', { ascending: false })
+  if (sort === 'amount') return q.order('amount_max', { ascending: false, nullsFirst: false })
+  return q.order('end_date', { ascending: true, nullsFirst: false })
 }
 
-function applyDeadlineFilter(data: Announcement[], deadline: string): Announcement[] {
-  if (deadline === 'all' || deadline === 'closed') return data
+// DB 마감 필터 적용
+function applyDbDeadlineFilter(q: AnyQuery, deadline: string): AnyQuery {
+  if (deadline === 'all' || deadline === 'closed') return q
   const days = parseInt(deadline, 10)
-  const now = new Date()
+  const now = new Date().toISOString().split('T')[0]
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() + days)
-  return data.filter((a) => a.end_date && new Date(a.end_date) >= now && new Date(a.end_date) <= cutoff)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  return q.gte('end_date', now).lte('end_date', cutoffStr)
 }
 
-async function getSearchResults(industry?: string, region?: string, stage?: string, showClosed = false) {
+interface SearchResult {
+  recommended: Announcement[]
+  recCount: number
+  related: Announcement[]
+  relCount: number
+}
+
+async function getSearchResults(
+  industry: string | undefined,
+  region: string | undefined,
+  stage: string | undefined,
+  sort: SortType,
+  deadline: string,
+  page: number,
+  rpage: number,
+  showClosed: boolean,
+): Promise<SearchResult> {
   const supabase = await createServerClient()
   const hasFilter = industry || region || stage
 
-  if (!hasFilter) {
+  const base = () => {
     let q = supabase.from('announcements').select('*')
     if (!showClosed) q = q.eq('status', 'active')
-    const { data } = await q.limit(100)
-    return { recommended: [] as Announcement[], all: (data ?? []) as Announcement[] }
+    return applyDbDeadlineFilter(q, deadline)
   }
 
-  // 추천 공고: 입력된 모든 조건에 매칭
-  let recQuery = supabase.from('announcements').select('*')
-  if (!showClosed) recQuery = recQuery.eq('status', 'active')
-  if (industry) recQuery = recQuery.contains('industry_tags', [industry])
-  if (region) recQuery = recQuery.or(`region_tags.cs.{"전국"},region_tags.cs.{"${region}"}`)
-  if (stage) recQuery = recQuery.contains('stage_tags', [stage])
-
-  const { data: recommended } = await recQuery.limit(50)
-
-  // 전체 공고: 하나 이상 조건 매칭
-  const conditions: string[] = []
-  if (industry) conditions.push(`industry_tags.cs.{"${industry}"}`)
-  if (region) {
-    conditions.push(`region_tags.cs.{"전국"}`, `region_tags.cs.{"${region}"}`)
+  if (!hasFilter) {
+    // 필터 없음: 전체 서버사이드 페이지네이션
+    const { count } = await base().select('*', { count: 'exact', head: true })
+    const { data } = await applyDbSort(base(), sort)
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+    return {
+      recommended: [],
+      recCount: 0,
+      related: (data ?? []) as Announcement[],
+      relCount: count ?? 0,
+    }
   }
-  if (stage) conditions.push(`stage_tags.cs.{"${stage}"}`)
-  conditions.push('industry_tags.eq.{}')
 
-  let allQuery = supabase.from('announcements').select('*')
-  if (!showClosed) allQuery = allQuery.eq('status', 'active')
-  const { data: all } = await allQuery.or(conditions.join(',')).limit(100)
+  // 추천: 모든 조건 매칭 (전체 fetch - 보통 소수)
+  let recQ = base()
+  if (industry) recQ = recQ.contains('industry_tags', [industry])
+  if (region) recQ = recQ.or(`region_tags.cs.{"전국"},region_tags.cs.{"${region}"}`)
+  if (stage) recQ = recQ.contains('stage_tags', [stage])
+  recQ = applyDbSort(recQ, sort)
 
-  const recIds = new Set((recommended ?? []).map((a: Announcement) => a.id))
-  const filteredAll = (all ?? []).filter((a: Announcement) => !recIds.has(a.id))
+  const { data: recAll } = await recQ
+  const recAllData = (recAll ?? []) as Announcement[]
+  const recIds = recAllData.map((a) => a.id)
+
+  // 추천 클라이언트 페이지네이션
+  const recCount = recAllData.length
+  const recommended = recAllData.slice((rpage - 1) * PAGE_SIZE, rpage * PAGE_SIZE)
+
+  // 관련: OR 조건 + 추천 제외, 서버사이드 페이지네이션
+  const orConditions: string[] = []
+  if (industry) orConditions.push(`industry_tags.cs.{"${industry}"}`)
+  if (region) orConditions.push(`region_tags.cs.{"전국"}`, `region_tags.cs.{"${region}"}`)
+  if (stage) orConditions.push(`stage_tags.cs.{"${stage}"}`)
+  orConditions.push('industry_tags.eq.{}')
+
+  let relBase = base().or(orConditions.join(','))
+  if (recIds.length > 0) relBase = relBase.not('id', 'in', `(${recIds.join(',')})`)
+
+  const { count: relCount } = await relBase.select('*', { count: 'exact', head: true })
+
+  let relQ = base().or(orConditions.join(','))
+  if (recIds.length > 0) relQ = relQ.not('id', 'in', `(${recIds.join(',')})`)
+  const { data: related } = await applyDbSort(relQ, sort)
+    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
   return {
-    recommended: (recommended ?? []) as Announcement[],
-    all: filteredAll as Announcement[],
+    recommended,
+    recCount,
+    related: (related ?? []) as Announcement[],
+    relCount: relCount ?? 0,
   }
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const { industry, region, stage, sort: sortParam, deadline: deadlineParam, page: pageParam, rpage: rpageParam } = await searchParams
+  const {
+    industry, region, stage,
+    sort: sortParam, deadline: deadlineParam,
+    page: pageParam, rpage: rpageParam,
+  } = await searchParams
+
   const sort = (sortParam ?? 'deadline') as SortType
   const deadline = deadlineParam ?? 'all'
-
-  const { recommended, all } = await getSearchResults(industry, region, stage, deadline === 'closed')
-  const hasFilter = industry || region || stage
-
-  const sortedRec = applyDeadlineFilter(applySort(recommended, sort), deadline)
-  const sortedAll = applyDeadlineFilter(applySort(all, sort), deadline)
-  const totalCount = sortedRec.length + sortedAll.length
-
   const page = Math.max(1, parseInt(pageParam ?? '1', 10))
   const rpage = Math.max(1, parseInt(rpageParam ?? '1', 10))
-  const allTotalPages = Math.ceil(sortedAll.length / PAGE_SIZE)
-  const recTotalPages = Math.ceil(sortedRec.length / PAGE_SIZE)
-  const pagedAll = sortedAll.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const pagedRec = sortedRec.slice((rpage - 1) * PAGE_SIZE, rpage * PAGE_SIZE)
+  const hasFilter = industry || region || stage
+
+  const { recommended, recCount, related, relCount } = await getSearchResults(
+    industry, region, stage, sort, deadline, page, rpage, deadline === 'closed'
+  )
+
+  const recTotalPages = Math.ceil(recCount / PAGE_SIZE)
+  const relTotalPages = Math.ceil(relCount / PAGE_SIZE)
   const rawParams = { industry, region, stage, sort: sortParam, deadline: deadlineParam, page: pageParam, rpage: rpageParam }
 
   return (
@@ -133,20 +167,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           <SortFilterBar />
         </Suspense>
 
-        {hasFilter && (
-          <p className="text-sm text-muted-foreground">
-            총 <span className="font-semibold text-foreground">{totalCount}건</span>의 지원금을 찾았어요
-          </p>
-        )}
-
         {/* 추천 공고 */}
-        {sortedRec.length > 0 && (
+        {recCount > 0 && (
           <section>
-            <h2 className="font-bold text-sm mb-2 text-blue-600">
-              내 조건에 딱 맞는 공고 {sortedRec.length}건
-            </h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              내 조건에 딱 맞는 공고{' '}
+              <span className="font-semibold text-blue-600">{recCount}건</span>
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {pagedRec.map((a) => (
+              {recommended.map((a) => (
                 <AnnouncementCard key={a.id} announcement={a} />
               ))}
             </div>
@@ -159,41 +188,68 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           </section>
         )}
 
-        {sortedRec.length > 0 && sortedAll.length > 0 && <Separator />}
+        {/* 추천 공고 없을 때 */}
+        {recCount === 0 && hasFilter && (
+          <div className="bg-white rounded-2xl border p-6 text-center space-y-4">
+            <div className="text-4xl">🔍</div>
+            <div>
+              <p className="font-semibold text-base">조건에 딱 맞는 공고가 없어요</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {relCount > 0
+                  ? '아래 관련 공고를 확인하거나, 알림을 설정해두세요.'
+                  : '알림을 설정해두면 새 공고가 올라올 때 바로 알려드릴게요.'}
+              </p>
+            </div>
+            <PreRegisterForm
+              industryTags={industry ? [industry] : []}
+              regionTags={region ? [region] : []}
+              stageTags={stage ? [stage] : []}
+            />
+          </div>
+        )}
 
-        {/* 전체 공고 */}
-        {sortedAll.length > 0 && (
+        {/* 관련 공고 (접힌 상태) */}
+        {relCount > 0 && hasFilter && (
+          <Suspense>
+            <RelatedSection
+              announcements={related}
+              currentPage={page}
+              totalPages={relTotalPages}
+              totalCount={relCount}
+              rawParams={rawParams}
+              hasRecommended={recCount > 0}
+            />
+          </Suspense>
+        )}
+
+        {/* 필터 없을 때 전체 공고 */}
+        {!hasFilter && related.length > 0 && (
           <section>
-            <h2 className="font-bold text-sm mb-2 text-muted-foreground">
-              {hasFilter ? `관련 공고 ${sortedAll.length}건 더보기` : `전체 공고 ${sortedAll.length}건`}
-            </h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              전체 공고 <span className="font-semibold text-foreground">{relCount}건</span>
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {pagedAll.map((a) => (
+              {related.map((a) => (
                 <AnnouncementCard key={a.id} announcement={a} />
               ))}
             </div>
             <PaginationNav
               currentPage={page}
-              totalPages={allTotalPages}
+              totalPages={relTotalPages}
               paramName="page"
               searchParams={rawParams}
             />
           </section>
         )}
 
-        {totalCount === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>조건에 맞는 공고가 없어요.</p>
-            <p className="text-sm mt-1">조건을 변경하거나 전체 공고를 확인해보세요.</p>
-          </div>
+        {/* 하단 알림 등록 */}
+        {recCount > 0 && (
+          <PreRegisterForm
+            industryTags={industry ? [industry] : []}
+            regionTags={region ? [region] : []}
+            stageTags={stage ? [stage] : []}
+          />
         )}
-
-        {/* 사전등록 */}
-        <PreRegisterForm
-          industryTags={industry ? [industry] : []}
-          regionTags={region ? [region] : []}
-          stageTags={stage ? [stage] : []}
-        />
       </div>
     </main>
   )

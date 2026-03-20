@@ -2,13 +2,14 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { createServerClient } from '@/lib/supabase/server'
-
-export const dynamic = 'force-dynamic'
 import { DdayBadge } from '@/components/announcement/DdayBadge'
 import { KakaoShareButton } from '@/components/announcement/KakaoShareButton'
 import { PreRegisterForm } from '@/components/pre-register/PreRegisterForm'
 import { Badge } from '@/components/ui/badge'
 import { Announcement } from '@/types/announcement'
+import { Building2, CalendarRange, MapPin, Tag, ExternalLink } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -52,8 +53,13 @@ export default async function AnnouncementDetailPage({ params }: PageProps) {
     .map((d) => d!.replace(/-/g, '.'))
     .join(' ~ ')
 
+  const amountLabel = a.amount_text
+    ?? (a.amount_max && a.amount_min
+      ? `${a.amount_min.toLocaleString()}만원 ~ ${a.amount_max.toLocaleString()}만원`
+      : a.amount_max ? `최대 ${a.amount_max.toLocaleString()}만원` : null)
+
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-gray-50 pb-24">
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-2">
           <Link href="/" className="font-bold text-lg text-blue-600">내몫</Link>
@@ -62,50 +68,58 @@ export default async function AnnouncementDetailPage({ params }: PageProps) {
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-3">
         {/* 공고 헤더 */}
-        <div className="bg-white rounded-2xl border p-5 space-y-3">
+        <div className="bg-white rounded-2xl border p-5 space-y-4">
           <div className="flex items-start gap-2">
-            <h1 className="font-bold text-lg leading-tight flex-1">{a.title}</h1>
+            <h1 className="font-bold text-lg leading-snug flex-1">{a.title}</h1>
             <DdayBadge endDate={a.end_date} status={a.status} />
           </div>
 
           {a.organization && (
-            <p className="text-sm text-muted-foreground">{a.organization}</p>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Building2 className="w-4 h-4 shrink-0" />
+              <span>{a.organization}</span>
+            </div>
           )}
 
           {/* 지원금액 */}
-          {(a.amount_max || a.amount_text) && (
-            <div className="bg-blue-50 rounded-lg px-3 py-2">
-              <p className="text-xs text-blue-500 font-medium">지원 금액</p>
-              <p className="font-bold text-blue-700 text-lg">
-                {a.amount_text ??
-                  (a.amount_max && a.amount_min
-                    ? `${a.amount_min.toLocaleString()}만원 ~ ${a.amount_max.toLocaleString()}만원`
-                    : `최대 ${a.amount_max!.toLocaleString()}만원`)}
-              </p>
+          {amountLabel && (
+            <div className="bg-blue-50 rounded-xl px-4 py-3">
+              <p className="text-xs text-blue-500 font-medium mb-0.5">지원 금액</p>
+              <p className="font-bold text-blue-700 text-xl">{amountLabel}</p>
             </div>
           )}
 
           {/* 신청 기간 */}
           {dateRange && (
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">신청 기간</p>
-              <p className="text-sm font-medium">{dateRange}</p>
+            <div className="flex items-center gap-1.5 text-sm">
+              <CalendarRange className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="font-medium">{dateRange}</span>
             </div>
           )}
 
           {/* 태그 */}
-          <div className="flex flex-wrap gap-1 pt-1">
-            {a.region_tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-            ))}
-            {a.industry_tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-            ))}
-            {a.stage_tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-            ))}
+          <div className="space-y-2">
+            {a.region_tags.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                {a.region_tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                ))}
+              </div>
+            )}
+            {(a.industry_tags.length > 0 || a.stage_tags.length > 0) && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                {a.industry_tags.map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                ))}
+                {a.stage_tags.map((tag) => (
+                  <Badge key={tag} className="text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-50">{tag}</Badge>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -119,28 +133,29 @@ export default async function AnnouncementDetailPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* 원문 링크 */}
-        {a.original_url && (
-          <a
-            href={a.original_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block bg-white rounded-2xl border p-4 text-center text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
-          >
-            기업마당에서 원문 공고 보기 →
-          </a>
-        )}
-
         {/* 카카오 공유 */}
         <KakaoShareButton announcement={a} currentUrl={currentUrl} />
 
-        {/* 사전등록 */}
-        <PreRegisterForm
-          industryTags={a.industry_tags}
-          regionTags={a.region_tags}
-          stageTags={a.stage_tags}
-        />
+        {/* 채널 추가 */}
+        <PreRegisterForm />
       </div>
+
+      {/* 하단 고정 원문 버튼 */}
+      {a.original_url && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-4 py-3 z-10">
+          <div className="max-w-2xl mx-auto">
+            <a
+              href={a.original_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-3 text-sm transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              기업마당에서 원문 공고 보기
+            </a>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
