@@ -11,17 +11,31 @@ declare global {
   }
 }
 
-export function PreRegisterForm() {
-  const [sdkReady, setSdkReady] = useState(false)
+interface PreRegisterFormProps {
+  industryTags?: string[]
+  regionTags?: string[]
+  stageTags?: string[]
+}
+
+export function PreRegisterForm({
+  industryTags = [],
+  regionTags = [],
+  stageTags = [],
+}: PreRegisterFormProps) {
+  void industryTags
+  void regionTags
+  void stageTags
+
+  const [sdkReady, setSdkReady] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return Boolean(window.Kakao?.isInitialized())
+  })
 
   useEffect(() => {
     const appKey = process.env.NEXT_PUBLIC_KAKAO_APP_KEY
     if (!appKey) return
 
-    if (window.Kakao?.isInitialized()) {
-      setSdkReady(true)
-      return
-    }
+    if (window.Kakao?.isInitialized()) return
 
     const script = document.createElement('script')
     script.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js'

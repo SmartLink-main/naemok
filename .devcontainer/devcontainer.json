@@ -1,0 +1,34 @@
+{
+  "name": "naemok devcontainer",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "remoteUser": "node",
+  "init": true,
+  "containerEnv": {
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  "forwardPorts": [
+    3000
+  ],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js dev server",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "if [ -f package-lock.json ]; then npm ci; else npm install; fi",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "typescript.tsdk": "node_modules/typescript/lib"
+      },
+      "extensions": [
+        "openai.chatgpt",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "ms-playwright.playwright",
+        "supabase.supabase"
+      ]
+    }
+  }
+}

@@ -57,7 +57,8 @@ function normalizeDate(dateStr: string): string | null {
   const match = dateStr.match(/(\d{2,4})[.\-/](\d{2})[.\-/](\d{2})/)
   if (!match) return null
 
-  let [, year, month, day] = match
+  const [, rawYear, month, day] = match
+  let year = rawYear
   if (year.length === 2) year = `20${year}`
 
   return `${year}-${month}-${day}`

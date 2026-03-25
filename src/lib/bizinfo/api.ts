@@ -60,7 +60,7 @@ export async function fetchBizinfoList(options: FetchListOptions = {}): Promise<
 
 /**
  * 전체 공고 수집 (페이지네이션)
- * maxPages: Vercel Cron 60초 제한 대응
+ * maxPages: 배포 환경에서의 실행 시간 제한을 고려한 상한
  */
 export async function fetchAllAnnouncements(maxPages = 5): Promise<BizinfoListItem[]> {
   const results: BizinfoListItem[] = []

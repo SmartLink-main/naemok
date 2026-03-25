@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { collectAnnouncements } from '@/lib/bizinfo/collector'
 
-// Vercel Cron이 호출하는 엔드포인트
-// vercel.json 에서 0 8,12,18 * * * 스케줄로 실행 (KST 기준 오전 8시, 낮 12시, 오후 6시)
+// Cloudflare Cron이 호출하는 엔드포인트
+// wrangler.jsonc 의 cron 스케줄로 실행 (UTC 23,3,9시 = KST 오전 8시, 낮 12시, 오후 6시)
 export async function GET(req: NextRequest) {
   // Cron 보안 검증 (무단 호출 방지)
   const authHeader = req.headers.get('authorization')

@@ -74,7 +74,7 @@ D-day 배지와 함께 원문 링크(기업마당)로 바로 이동할 수 있�
 | 데이터베이스 | Supabase (PostgreSQL) |
 | AI | Google Gemini 2.5 Flash |
 | 외부 API | 기업마당 공식 API, 카카오톡 SDK |
-| 배포 | Vercel (Cron 포함) |
+| 배포 | Cloudflare Workers (Cron 포함) |
 
 ---
 
@@ -102,8 +102,10 @@ D-day 배지와 함께 원문 링크(기업마당)로 바로 이동할 수 있�
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SECRET_KEY=
-GOOGLE_GENERATIVE_AI_API_KEY=
+GEMINI_API_KEY=
 BIZINFO_API_KEY=
 CRON_SECRET=
-NEXT_PUBLIC_KAKAO_JS_KEY=
+APP_URL=
+NEXT_PUBLIC_KAKAO_APP_KEY=
+NEXT_PUBLIC_KAKAO_CHANNEL_ID=
 ```
